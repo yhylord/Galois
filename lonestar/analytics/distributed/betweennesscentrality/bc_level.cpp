@@ -635,9 +635,11 @@ int main(int argc, char** argv) {
 
   std::unique_ptr<Graph> h_graph;
 #ifdef GALOIS_ENABLE_GPU
+  galois::gPrint("Using GPU");
   std::tie(h_graph, syncSubstrate) =
       distGraphInitialization<NodeData, void>(&cuda_ctx);
 #else
+  galois::gPrint("Using CPU");
   std::tie(h_graph, syncSubstrate) = distGraphInitialization<NodeData, void>();
 #endif
 

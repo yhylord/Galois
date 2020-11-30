@@ -26,6 +26,14 @@
 #include <iomanip>
 #include <iostream>
 
+#ifdef GALOIS_ENABLE_GPU
+#include "bc_mr_cuda.h"
+struct CUDA_Context* cuda_ctx;
+#else
+enum { CPU, GPU_CUDA };
+int personality = CPU;
+#endif
+
 // type of short path
 using ShortPathType = double;
 
@@ -546,6 +554,9 @@ constexpr static const char* const url = nullptr;
 uint64_t macroRound = 0; // macro round, i.e. number of batches done so far
 
 int main(int argc, char** argv) {
+#ifdef GALOIS_ENABLE_GPU
+  galois::gPrint("GPU Enabled\n");
+#endif
   galois::DistMemSys G;
   DistBenchStart(argc, argv, name, desc, url);
 
@@ -559,7 +570,12 @@ int main(int argc, char** argv) {
   std::unique_ptr<Graph> hg;
   // false = iterate over in edges
   std::tie(hg, syncSubstrate) =
-      distGraphInitialization<NodeData, void, false>();
+#ifdef GALOIS_ENABLE_GPU
+    distGraphInitialization<NodeData, void, false>(&cuda_ctx);
+#else
+    distGraphInitialization<NodeData, void, false>();
+#endif
+
 
   if (totalNumSources == 0) {
     galois::gDebug("Total num sources unspecified");
@@ -723,8 +739,17 @@ int main(int argc, char** argv) {
       macroRound         = 0;
       numSourcesPerRound = origNumRoundSources;
 
-      bitset_dependency.reset();
-      bitset_minDistances.reset();
+      if (personality == GPU_CUDA) {
+#ifdef GALOIS_ENABLE_GPU
+        bitset_dependency_reset_cuda(cuda_ctx);
+        bitset_minDistances_reset_cuda(cuda_ctx);
+#else
+        abort();
+#endif
+      } else if (personality == CPU) {
+        bitset_dependency.reset();
+        bitset_minDistances.reset();
+      }
 
       InitializeGraph(*hg);
       galois::runtime::getHostBarrier().wait();

@@ -45,6 +45,15 @@ void load_graph_CUDA(struct CUDA_Context* ctx, MarshalGraph &g, unsigned num_hos
   reset_CUDA_context(ctx);
 }
 
+void reset_CUDA_context(struct CUDA_Context* ctx) {
+  ctx->minDistance.data.zero_gpu();
+  ctx->shortPathCount.data.zero_gpu();
+  ctx->dependency.data.zero_gpu();
+  // fixme: need to reset MRBCTree fields
+  ctx->bc.data.zero_gpu();
+  ctx->roundIndexToSend.data.zero_gpu();
+}
+
 void bitset_dependency_reset_cuda(struct CUDA_Context* ctx) {
   ctx->dependency.is_updated.cpu_rd_ptr()->reset();
 }

@@ -30,12 +30,11 @@
 #include "bc_mr_cuda.h"
 struct CUDA_Context* cuda_ctx;
 #else
+// type of short path
+using ShortPathType = double;
 enum { CPU, GPU_CUDA };
 int personality = CPU;
 #endif
-
-// type of short path
-using ShortPathType = double;
 
 /**
  * Structure for holding data calculated during BC

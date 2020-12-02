@@ -123,16 +123,29 @@ std::unique_ptr<galois::graphs::GluonSubstrate<Graph>> syncSubstrate;
 void InitializeGraph(Graph& graph) {
   const auto& allNodes = graph.allNodesRange();
 
-  galois::do_all(
-      galois::iterate(allNodes.begin(), allNodes.end()),
-      [&](GNode curNode) {
+  if (personality == GPU_CUDA) {
+#ifdef GALOIS_ENABLE_GPU
+      std::string impl_str(
+          syncSubstrate->get_run_identifier("InitializeGraph"));
+      galois::StatTimer StatTimer_cuda(impl_str.c_str(), REGION_NAME);
+      StatTimer_cuda.start();
+      InitializeGraph_allNodes_cuda(cuda_ctx);
+      StatTimer_cuda.stop();
+#else
+      abort();
+#endif
+  } else if (personality == CPU) {
+    galois::do_all(
+        galois::iterate(allNodes.begin(), allNodes.end()),
+        [&](GNode curNode) {
         NodeData& cur_data = graph.getData(curNode);
         cur_data.sourceData.resize(vectorSize);
         cur_data.bc = 0.0;
-      },
-      galois::loopname(
+        },
+        galois::loopname(
           syncSubstrate->get_run_identifier("InitializeGraph").c_str()),
-      galois::no_stats()); // Only stats the runtime by loopname
+        galois::no_stats()); // Only stats the runtime by loopname
+  }
 }
 
 /**
@@ -146,29 +159,43 @@ void InitializeIteration(Graph& graph,
                          const std::vector<uint64_t>& nodesToConsider) {
   const auto& allNodes = graph.allNodesRange();
 
-  galois::do_all(
-      galois::iterate(allNodes.begin(), allNodes.end()),
-      [&](GNode curNode) {
-        NodeData& cur_data        = graph.getData(curNode);
-        cur_data.roundIndexToSend = infinity;
-        cur_data.dTree.initialize();
-        for (unsigned i = 0; i < numSourcesPerRound; i++) {
-          // min distance and short path count setup
-          if (nodesToConsider[i] == graph.getGID(curNode)) { // source node
-            cur_data.sourceData[i].minDistance     = 0;
-            cur_data.sourceData[i].shortPathCount  = 1;
-            cur_data.sourceData[i].dependencyValue = 0.0;
-            cur_data.dTree.setDistance(i, 0);
-          } else { // non-source node
-            cur_data.sourceData[i].minDistance     = infinity;
-            cur_data.sourceData[i].shortPathCount  = 0;
-            cur_data.sourceData[i].dependencyValue = 0.0;
-          }
-        }
-      },
-      galois::loopname(
-          syncSubstrate->get_run_identifier("InitializeIteration").c_str()),
-      galois::no_stats());
+  if (personality == GPU_CUDA) {
+#ifdef GALOIS_ENABLE_GPU
+      std::string impl_str(
+          syncSubstrate->get_run_identifier("InitializeIteration"));
+      galois::StatTimer StatTimer_cuda(impl_str.c_str(), REGION_NAME);
+      StatTimer_cuda.start();
+      // fixme: need to allocate GPU memory for nodesToConsider
+      InitializeIteration_allNodes_cuda(infinity, nodesToConsider, cuda_ctx);
+      StatTimer_cuda.stop();
+#else
+      abort();
+#endif
+    } else if (personality == CPU) {
+      galois::do_all(
+          galois::iterate(allNodes.begin(), allNodes.end()),
+          [&](GNode curNode) {
+            NodeData& cur_data        = graph.getData(curNode);
+            cur_data.roundIndexToSend = infinity;
+            cur_data.dTree.initialize();
+            for (unsigned i = 0; i < numSourcesPerRound; i++) {
+              // min distance and short path count setup
+              if (nodesToConsider[i] == graph.getGID(curNode)) { // source node
+                cur_data.sourceData[i].minDistance     = 0;
+                cur_data.sourceData[i].shortPathCount  = 1;
+                cur_data.sourceData[i].dependencyValue = 0.0;
+                cur_data.dTree.setDistance(i, 0);
+              } else { // non-source node
+                cur_data.sourceData[i].minDistance     = infinity;
+                cur_data.sourceData[i].shortPathCount  = 0;
+                cur_data.sourceData[i].dependencyValue = 0.0;
+              }
+            }
+          },
+          galois::loopname(
+              syncSubstrate->get_run_identifier("InitializeIteration").c_str()),
+          galois::no_stats());
+    }
 };
 
 /**
@@ -184,26 +211,42 @@ void FindMessageToSync(Graph& graph, const uint32_t roundNumber,
                        galois::DGAccumulator<uint32_t>& dga) {
   const auto& allNodes = graph.allNodesRange();
 
-  galois::do_all(
-      galois::iterate(allNodes.begin(), allNodes.end()),
-      [&](GNode curNode) {
-        NodeData& cur_data        = graph.getData(curNode);
-        cur_data.roundIndexToSend = cur_data.dTree.getIndexToSend(roundNumber);
 
-        if (cur_data.roundIndexToSend != infinity) {
-          if (cur_data.sourceData[cur_data.roundIndexToSend].minDistance != 0) {
-            bitset_minDistances.set(curNode);
+  if (personality == GPU_CUDA) {
+#ifdef GALOIS_ENABLE_GPU
+    std::string impl_str(syncSubstrate->get_run_identifier(
+          std::string(REGION_NAME) + "_FindMessageToSync"));
+    galois::StatTimer StatTimer_cuda(impl_str.c_str(), REGION_NAME);
+    StatTimer_cuda.start();
+    unsigned int __retval = 0;
+    FindMessageToSync_allNodes_cuda(__retval, roundNumber, cuda_ctx);
+    dga += __retval;
+    StatTimer_cuda.stop();
+#else
+    abort();
+#endif
+  } else if (personality == CPU) {
+    galois::do_all(
+        galois::iterate(allNodes.begin(), allNodes.end()),
+        [&](GNode curNode) {
+          NodeData& cur_data        = graph.getData(curNode);
+          cur_data.roundIndexToSend = cur_data.dTree.getIndexToSend(roundNumber);
+
+          if (cur_data.roundIndexToSend != infinity) {
+            if (cur_data.sourceData[cur_data.roundIndexToSend].minDistance != 0) {
+              bitset_minDistances.set(curNode);
+            }
+            dga += 1;
+          } else if (cur_data.dTree.moreWork()) {
+            dga += 1;
           }
-          dga += 1;
-        } else if (cur_data.dTree.moreWork()) {
-          dga += 1;
-        }
-      },
-      galois::loopname(syncSubstrate
-                           ->get_run_identifier(std::string(REGION_NAME) +
-                                                "_FindMessageToSync")
-                           .c_str()),
-      galois::steal(), galois::no_stats());
+        },
+        galois::loopname(syncSubstrate
+                             ->get_run_identifier(std::string(REGION_NAME) +
+                                                  "_FindMessageToSync")
+                             .c_str()),
+        galois::steal(), galois::no_stats());
+  }
 }
 
 /**
@@ -216,19 +259,32 @@ void FindMessageToSync(Graph& graph, const uint32_t roundNumber,
 void ConfirmMessageToSend(Graph& graph, const uint32_t roundNumber) {
   const auto& allNodes = graph.allNodesRange();
 
-  galois::do_all(
-      galois::iterate(allNodes.begin(), allNodes.end()),
-      [&](GNode curNode) {
-        NodeData& cur_data = graph.getData(curNode);
-        if (cur_data.roundIndexToSend != infinity) {
-          cur_data.dTree.markSent(roundNumber);
-        }
-      },
-      galois::loopname(syncSubstrate
-                           ->get_run_identifier(std::string(REGION_NAME) +
-                                                "_ConfirmMessageToSend")
-                           .c_str()),
-      galois::no_stats());
+  if (personality == GPU_CUDA) {
+#ifdef GALOIS_ENABLE_GPU
+    std::string impl_str(syncSubstrate->get_run_identifier(
+          std::string(REGION_NAME) + "_ConfirmMessageToSend"));
+    galois::StatTimer StatTimer_cuda(impl_str.c_str(), REGION_NAME);
+    StatTimer_cuda.start();
+    ConfirmMessageToSend_allNodes_cuda(roundNumber, cuda_ctx);
+    StatTimer_cuda.stop();
+#else
+    abort();
+#endif
+  } else if (personality == CPU) {
+    galois::do_all(
+        galois::iterate(allNodes.begin(), allNodes.end()),
+        [&](GNode curNode) {
+          NodeData& cur_data = graph.getData(curNode);
+          if (cur_data.roundIndexToSend != infinity) {
+            cur_data.dTree.markSent(roundNumber);
+          }
+        },
+        galois::loopname(syncSubstrate
+                             ->get_run_identifier(std::string(REGION_NAME) +
+                                                  "_ConfirmMessageToSend")
+                             .c_str()),
+        galois::no_stats());
+  }
 }
 
 /**
@@ -247,6 +303,7 @@ void SendAPSPMessagesOp(GNode dst, Graph& graph,
   auto& dnode     = graph.getData(dst);
   auto& dnodeData = dnode.sourceData;
 
+
   for (auto inEdge : graph.edges(dst)) {
     NodeData& src_data   = graph.getData(graph.getEdgeDst(inEdge));
     uint32_t indexToSend = src_data.roundIndexToSend;
@@ -263,12 +320,12 @@ void SendAPSPMessagesOp(GNode dst, Graph& graph,
         dnode.dTree.setDistance(indexToSend, oldValue, newValue);
         // overwrite short path with this node's shortest path
         dnodeIndex.shortPathCount =
-            src_data.sourceData[indexToSend].shortPathCount;
+          src_data.sourceData[indexToSend].shortPathCount;
       } else if (oldValue == newValue) {
         assert(src_data.sourceData[indexToSend].shortPathCount != 0);
         // add to short path
         dnodeIndex.shortPathCount +=
-            src_data.sourceData[indexToSend].shortPathCount;
+          src_data.sourceData[indexToSend].shortPathCount;
       }
 
       dga += 1;
@@ -279,14 +336,29 @@ void SendAPSPMessagesOp(GNode dst, Graph& graph,
 void SendAPSPMessages(Graph& graph, galois::DGAccumulator<uint32_t>& dga) {
   const auto& allNodesWithEdges = graph.allNodesWithEdgesRange();
 
-  galois::do_all(
-      galois::iterate(allNodesWithEdges),
-      [&](GNode dst) { SendAPSPMessagesOp(dst, graph, dga); },
-      galois::loopname(syncSubstrate
-                           ->get_run_identifier(std::string(REGION_NAME) +
-                                                "_SendAPSPMessages")
-                           .c_str()),
-      galois::steal(), galois::no_stats());
+  if (personality == GPU_CUDA) {
+#ifdef GALOIS_ENABLE_GPU
+    std::string impl_str(syncSubstrate->get_run_identifier(
+          std::string(REGION_NAME) + "_SendAPSPMessages"));
+    galois::StatTimer StatTimer_cuda(impl_str.c_str(), REGION_NAME);
+    StatTimer_cuda.start();
+    unsigned int __retval = 0;
+    SendAPSPMessages_nodesWithEdges_cuda(__retval, cuda_ctx);
+    dga += __retval;
+    StatTimer_cuda.stop();
+#else
+    abort();
+#endif
+  } else if (personality == CPU) {
+    galois::do_all(
+        galois::iterate(allNodesWithEdges),
+        [&](GNode dst) { SendAPSPMessagesOp(dst, graph, dga); },
+        galois::loopname(syncSubstrate
+          ->get_run_identifier(std::string(REGION_NAME) +
+            "_SendAPSPMessages")
+          .c_str()),
+        galois::steal(), galois::no_stats());
+  }
 }
 
 /**
@@ -339,17 +411,30 @@ void RoundUpdate(Graph& graph) {
   const auto& allNodes = graph.allNodesRange();
   syncSubstrate->set_num_round(0);
 
-  galois::do_all(
-      galois::iterate(allNodes.begin(), allNodes.end()),
-      [&](GNode node) {
+  if (personality == GPU_CUDA) {
+#ifdef GALOIS_ENABLE_GPU
+    std::string impl_str(syncSubstrate->get_run_identifier(
+          std::string(REGION_NAME) + "_RoundUpdate"));
+    galois::StatTimer StatTimer_cuda(impl_str.c_str(), REGION_NAME);
+    StatTimer_cuda.start();
+    RoundUpdate_allNodes_cuda(cuda_ctx);
+    StatTimer_cuda.stop();
+#else
+    abort();
+#endif
+  } else if (personality == CPU) {
+    galois::do_all(
+        galois::iterate(allNodes.begin(), allNodes.end()),
+        [&](GNode node) {
         NodeData& cur_data = graph.getData(node);
         cur_data.dTree.prepForBackPhase();
-      },
-      galois::loopname(
+        },
+        galois::loopname(
           syncSubstrate
-              ->get_run_identifier(std::string(REGION_NAME) + "_RoundUpdate")
-              .c_str()),
-      galois::no_stats());
+          ->get_run_identifier(std::string(REGION_NAME) + "_RoundUpdate")
+          .c_str()),
+        galois::no_stats());
+  }
 }
 
 /**
@@ -362,32 +447,45 @@ void BackFindMessageToSend(Graph& graph, const uint32_t roundNumber,
   // that needs to be sync'd
   const auto& allNodes = graph.allNodesRange();
 
-  galois::do_all(
-      galois::iterate(allNodes.begin(), allNodes.end()),
-      [&](GNode dst) {
+  if (personality == GPU_CUDA) {
+#ifdef GALOIS_ENABLE_GPU
+    std::string impl_str(syncSubstrate->get_run_identifier(
+          std::string(REGION_NAME) + "_BackFindMessageToSend"));
+    galois::StatTimer StatTimer_cuda(impl_str.c_str(), REGION_NAME);
+    StatTimer_cuda.start();
+    BackFindMessageToSend_allNodes_cuda(roundNumber, lastRoundNumber, cuda_ctx);
+    StatTimer_cuda.stop();
+#else
+    abort();
+#endif
+  } else if (personality == CPU) {
+    galois::do_all(
+        galois::iterate(allNodes.begin(), allNodes.end()),
+        [&](GNode dst) {
         NodeData& dst_data = graph.getData(dst);
 
         // if zero distances already reached, there is no point sending things
         // out since we don't care about dependecy for sources (i.e. distance
         // 0)
         if (!dst_data.dTree.isZeroReached()) {
-          dst_data.roundIndexToSend =
-              dst_data.dTree.backGetIndexToSend(roundNumber, lastRoundNumber);
+        dst_data.roundIndexToSend =
+        dst_data.dTree.backGetIndexToSend(roundNumber, lastRoundNumber);
 
-          if (dst_data.roundIndexToSend != infinity) {
-            // only comm if not redundant 0
-            if (dst_data.sourceData[dst_data.roundIndexToSend]
-                    .dependencyValue != 0) {
-              bitset_dependency.set(dst);
-            }
-          }
+        if (dst_data.roundIndexToSend != infinity) {
+        // only comm if not redundant 0
+        if (dst_data.sourceData[dst_data.roundIndexToSend]
+            .dependencyValue != 0) {
+        bitset_dependency.set(dst);
         }
-      },
-      galois::loopname(syncSubstrate
-                           ->get_run_identifier(std::string(REGION_NAME) +
-                                                "_BackFindMessageToSend")
-                           .c_str()),
-      galois::no_stats());
+        }
+        }
+        },
+        galois::loopname(syncSubstrate
+            ->get_run_identifier(std::string(REGION_NAME) +
+              "_BackFindMessageToSend")
+            .c_str()),
+        galois::no_stats());
+  }
 }
 
 /**
@@ -448,14 +546,28 @@ void BackProp(Graph& graph, const uint32_t lastRoundNumber) {
                         Bitset_dependency>(
         std::string(std::string(REGION_NAME) + "_DependencySync"));
 
-    galois::do_all(
-        galois::iterate(allNodesWithEdges),
-        [&](GNode dst) { BackPropOp(dst, graph); },
-        galois::loopname(
+
+    if (personality == GPU_CUDA) {
+#ifdef GALOIS_ENABLE_GPU
+      std::string impl_str(syncSubstrate->get_run_identifier(
+            std::string(REGION_NAME) + "_BackProp"));
+      galois::StatTimer StatTimer_cuda(impl_str.c_str(), REGION_NAME);
+      StatTimer_cuda.start();
+      BackProp_nodesWithEdges_cuda(lastRoundNumber, cuda_ctx);
+      StatTimer_cuda.stop();
+#else
+      abort();
+#endif
+    } else if (personality == CPU) {
+      galois::do_all(
+          galois::iterate(allNodesWithEdges),
+          [&](GNode dst) { BackPropOp(dst, graph); },
+          galois::loopname(
             syncSubstrate
-                ->get_run_identifier(std::string(REGION_NAME) + "_BackProp")
-                .c_str()),
-        galois::steal(), galois::no_stats());
+            ->get_run_identifier(std::string(REGION_NAME) + "_BackProp")
+            .c_str()),
+          galois::steal(), galois::no_stats());
+    }
 
     currentRound++;
   }
@@ -472,21 +584,34 @@ void BC(Graph& graph, const std::vector<uint64_t>& nodesToConsider) {
   const auto& masterNodes = graph.masterNodesRange();
   syncSubstrate->set_num_round(0);
 
-  galois::do_all(
-      galois::iterate(masterNodes.begin(), masterNodes.end()),
-      [&](GNode node) {
+  if (personality == GPU_CUDA) {
+#ifdef GALOIS_ENABLE_GPU
+    std::string impl_str(syncSubstrate->get_run_identifier(
+          std::string(REGION_NAME)));
+    galois::StatTimer StatTimer_cuda(impl_str.c_str(), REGION_NAME);
+    StatTimer_cuda.start();
+    BC_masterNodes_cuda(nodesToConsider, cuda_ctx);
+    StatTimer_cuda.stop();
+#else
+    abort();
+#endif
+  } else if (personality == CPU) {
+    galois::do_all(
+        galois::iterate(masterNodes.begin(), masterNodes.end()),
+        [&](GNode node) {
         NodeData& cur_data = graph.getData(node);
 
         for (unsigned i = 0; i < numSourcesPerRound; i++) {
-          // exclude sources themselves from BC calculation
-          if (graph.getGID(node) != nodesToConsider[i]) {
-            cur_data.bc += cur_data.sourceData[i].dependencyValue;
-          }
+        // exclude sources themselves from BC calculation
+        if (graph.getGID(node) != nodesToConsider[i]) {
+        cur_data.bc += cur_data.sourceData[i].dependencyValue;
         }
-      },
-      galois::loopname(
+        }
+        },
+        galois::loopname(
           syncSubstrate->get_run_identifier(std::string(REGION_NAME)).c_str()),
-      galois::no_stats());
+        galois::no_stats());
+  }
 };
 
 /******************************************************************************/
@@ -502,17 +627,34 @@ void Sanity(Graph& graph) {
   DGA_min.reset();
   DGA_sum.reset();
 
-  galois::do_all(
-      galois::iterate(graph.masterNodesRange().begin(),
-                      graph.masterNodesRange().end()),
-      [&](auto src) {
-        NodeData& sdata = graph.getData(src);
 
-        DGA_max.update(sdata.bc);
-        DGA_min.update(sdata.bc);
-        DGA_sum += sdata.bc;
-      },
-      galois::no_stats(), galois::loopname("Sanity"));
+  if (personality == GPU_CUDA) {
+#ifdef GALOIS_ENABLE_GPU
+    std::string impl_str("Sanity");
+    galois::StatTimer StatTimer_cuda(impl_str.c_str(), REGION_NAME);
+    StatTimer_cuda.start();
+    float __dga_max = 0, __dga_min = 0, __dga_sum = 0;
+    Sanity_masterNodes_cuda(__dga_max, __dga_min, __dga_sum, cuda_ctx);
+    DGA_max.update(__dga_max);
+    DGA_min.update(__dga_min);
+    DGA_sum += __dga_sum;
+    StatTimer_cuda.stop();
+#else
+    abort();
+#endif
+  } else if (personality == CPU) {
+    galois::do_all(
+        galois::iterate(graph.masterNodesRange().begin(),
+          graph.masterNodesRange().end()),
+        [&](auto src) {
+          NodeData& sdata = graph.getData(src);
+
+          DGA_max.update(sdata.bc);
+          DGA_min.update(sdata.bc);
+          DGA_sum += sdata.bc;
+        },
+        galois::no_stats(), galois::loopname("Sanity"));
+  }
 
   float max_bc = DGA_max.reduce();
   float min_bc = DGA_min.reduce();
@@ -530,7 +672,7 @@ void Sanity(Graph& graph) {
 /* Make results */
 /******************************************************************************/
 
-std::vector<float> makeResults(std::unique_ptr<Graph>& hg) {
+std::vector<float> makeResultsCPU(std::unique_ptr<Graph>& hg) {
   std::vector<float> values;
 
   values.reserve(hg->numMasters());
@@ -541,6 +683,33 @@ std::vector<float> makeResults(std::unique_ptr<Graph>& hg) {
   return values;
 }
 
+#ifdef GALOIS_ENABLE_GPU
+std::vector<float> makeResultsGPU(std::unique_ptr<Graph>& hg) {
+  std::vector<float> values;
+
+  values.reserve(hg->numMasters());
+  for (auto node : hg->masterNodesRange()) {
+    values.push_back(get_node_betweenness_centrality_cuda(cuda_ctx, node));
+  }
+
+  return values;
+}
+#else
+std::vector<float> makeResultsGPU(std::unique_ptr<Graph>& /*unused*/) {
+  abort();
+}
+#endif
+
+std::vector<float> makeResults(std::unique_ptr<Graph>& hg) {
+  switch (personality) {
+  case CPU:
+    return makeResultsCPU(hg);
+  case GPU_CUDA:
+    return makeResultsGPU(hg);
+  default:
+    abort();
+  }
+}
 /******************************************************************************/
 /* Main method for running */
 /******************************************************************************/
@@ -553,9 +722,6 @@ constexpr static const char* const url = nullptr;
 uint64_t macroRound = 0; // macro round, i.e. number of batches done so far
 
 int main(int argc, char** argv) {
-#ifdef GALOIS_ENABLE_GPU
-  galois::gPrint("GPU Enabled\n");
-#endif
   galois::DistMemSys G;
   DistBenchStart(argc, argv, name, desc, url);
 

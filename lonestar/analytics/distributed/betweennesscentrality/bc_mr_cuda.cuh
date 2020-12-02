@@ -73,3 +73,8 @@ void bitset_minDistances_reset_cuda(struct CUDA_Context* ctx, size_t begin, size
 void get_bitset_minDistances_cuda(struct CUDA_Context* ctx, uint64_t* bitset_compute) {
   ctx->minDistance.is_updated.cpu_rd_ptr()->copy_to_cpu(bitset_compute);
 }
+
+float get_node_betweenness_centrality_cuda(CUDA_Context* ctx, uint32_t LID) {
+  float *bc = ctx->bc.data.cpu_rd_ptr();
+  return bc[LID];
+}

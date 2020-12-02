@@ -12,7 +12,7 @@ void get_bitset_minDistances_cuda(struct CUDA_Context *ctx, uint64_t* bitset_com
 
 float get_node_betweenness_centrality_cuda(CUDA_Context* ctx, uint32_t LID);
 
-void InitializeGraph_allNodes_cuda(CUDA_Context* cuda_ctx);
+void InitializeGraph_allNodes_cuda(uint32_t vectorSize, CUDA_Context* cuda_ctx);
 
 void InitializeIteration_allNodes_cuda(uint32_t infinity, const std::vector<uint64_t>& nodesToConsider, CUDA_Context* cuda_ctx);
 

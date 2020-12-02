@@ -129,7 +129,7 @@ void InitializeGraph(Graph& graph) {
           syncSubstrate->get_run_identifier("InitializeGraph"));
       galois::StatTimer StatTimer_cuda(impl_str.c_str(), REGION_NAME);
       StatTimer_cuda.start();
-      InitializeGraph_allNodes_cuda(cuda_ctx);
+      InitializeGraph_allNodes_cuda(vectorSize, cuda_ctx);
       StatTimer_cuda.stop();
 #else
       abort();

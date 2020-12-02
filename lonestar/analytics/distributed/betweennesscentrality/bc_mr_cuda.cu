@@ -68,7 +68,32 @@ void InitializeGraph_allNodes_cuda(uint32_t vectorSize, CUDA_Context* ctx) {
   InitializeGraph_cuda(0, ctx->gg.nnodes, vectorSize, ctx);
 }
 
-void InitializeIteration_allNodes_cuda(uint32_t infinity, const std::vector<uint64_t>& nodesToConsider, CUDA_Context* cuda_ctx) {
+// TODO: Pass in MRBC Tree
+__global__ void InitializeIteration(uint32_t __begin, uint32_t __end,
+    uint32_t infinity, uint32_t numSourcesPerRound, uint64_t* nodesToConsider, 
+    uint32_t *p_minDistance,
+    ShortPathType *p_shortPathCount,
+    float *p_dependency,
+    uint32_t *p_roundIndexToSend
+    ) {
+}
+
+void InitializeIteration_allNodes_cuda(uint32_t infinity, uint32_t numSourcesPerRound, const std::vector<uint64_t>& nodesToConsider, CUDA_Context* cuda_ctx) {
+  dim3 blocks;
+  dim3 threads;
+  kernel_sizing(blocks, threads);
+
+  auto size = nodesToConsider.size() * sizeof(uint64_t);
+  uint64_t* nodes;
+  cudaMalloc((void**)&nodes, size);
+  cudaMemcpy(nodes, nodesToConsider.data(), size, cudaMemcpyDeviceToHost);
+
+  InitializeIteration<<<blocks, threads>>>(0, cuda_ctx->gg.nnodes, infinity, numSourcesPerRound, nodes,
+      cuda_ctx->minDistance.data.gpu_wr_ptr(),
+      cuda_ctx->shortPathCount.data.gpu_wr_ptr(),
+      cuda_ctx->dependency.data.gpu_wr_ptr(),
+      cuda_ctx->roundIndexToSend.data.gpu_wr_ptr()
+      );
 }
 
 void FindMessageToSync_allNodes_cuda(uint32_t &dga, uint32_t roundNumber, CUDA_Context* cuda_ctx) {}
@@ -83,6 +108,11 @@ void BackFindMessageToSend_allNodes_cuda(uint32_t roundNumber, uint32_t lastRoun
 
 void BackProp_nodesWithEdges_cuda(uint32_t lastRoundNumber, CUDA_Context* cuda_ctx) {}
 
-;void BC_masterNodes_cuda(const std::vector<uint64_t>& nodesToConsider, CUDA_Context* cuda_ctx) {}
+void BC_masterNodes_cuda(const std::vector<uint64_t>& nodesToConsider, CUDA_Context* cuda_ctx) {
+  auto size = nodesToConsider.size() * sizeof(uint64_t);
+  uint64_t* nodes;
+  cudaMalloc((void**)&nodes, size);
+  cudaMemcpy(nodes, nodesToConsider.data(), size, cudaMemcpyDeviceToHost);
+}
 
 void Sanity_masterNodes_cuda(float &dga_max, float &dga_min, float &dga_sum, CUDA_Context* cuda_ctx) {}

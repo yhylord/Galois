@@ -4,3 +4,6 @@
 [submodule "cub"]
 	path = external/cub
 	url = https://github.com/NVlabs/cub.git
+[submodule "slabhash"]
+	path = external/slabhash
+	url = https://github.com/owensgroup/SlabHash.git

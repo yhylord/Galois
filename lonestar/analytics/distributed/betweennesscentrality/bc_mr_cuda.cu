@@ -121,7 +121,7 @@ void InitializeIteration_allNodes_cuda(uint32_t infinity, uint32_t numSourcesPer
   auto size = nodesToConsider.size() * sizeof(uint64_t);
   uint64_t* nodes;
   cudaMalloc((void**)&nodes, size);
-  cudaMemcpy(nodes, nodesToConsider.data(), size, cudaMemcpyDeviceToHost);
+  cudaMemcpy(nodes, nodesToConsider.data(), size, cudaMemcpyHostToDevice);
 
   InitializeIteration<<<blocks, threads>>>(cuda_ctx->gg, 0, cuda_ctx->gg.nnodes, infinity, numSourcesPerRound, vectorSize, nodes,
       cuda_ctx->minDistance.data.gpu_wr_ptr(),
@@ -205,7 +205,7 @@ void BC_masterNodes_cuda(const std::vector<uint64_t>& nodesToConsider, CUDA_Cont
   auto size = nodesToConsider.size() * sizeof(uint64_t);
   uint64_t* nodes;
   cudaMalloc((void**)&nodes, size);
-  cudaMemcpy(nodes, nodesToConsider.data(), size, cudaMemcpyDeviceToHost);
+  cudaMemcpy(nodes, nodesToConsider.data(), size, cudaMemcpyHostToDevice);
 
   cudaDeviceSynchronize();
   check_cuda_kernel;

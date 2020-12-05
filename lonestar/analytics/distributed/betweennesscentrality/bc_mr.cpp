@@ -166,7 +166,7 @@ void InitializeIteration(Graph& graph,
       galois::StatTimer StatTimer_cuda(impl_str.c_str(), REGION_NAME);
       StatTimer_cuda.start();
       // fixme: need to allocate GPU memory for nodesToConsider
-      InitializeIteration_allNodes_cuda(infinity, numSourcesPerRound, nodesToConsider, cuda_ctx);
+      InitializeIteration_allNodes_cuda(infinity, numSourcesPerRound, vectorSize, nodesToConsider, cuda_ctx);
       StatTimer_cuda.stop();
 #else
       abort();

@@ -69,16 +69,50 @@ void InitializeGraph_allNodes_cuda(uint32_t vectorSize, CUDA_Context* ctx) {
 }
 
 // TODO: Pass in MRBC Tree
-__global__ void InitializeIteration(uint32_t __begin, uint32_t __end,
-    uint32_t infinity, uint32_t numSourcesPerRound, uint64_t* nodesToConsider, 
+__global__ void InitializeIteration(CSRGraph graph, uint32_t __begin, uint32_t __end,
+    uint32_t infinity, uint32_t numSourcesPerRound, uint32_t vectorSize,
+    uint64_t* nodesToConsider, 
     uint32_t *p_minDistance,
     ShortPathType *p_shortPathCount,
     float *p_dependency,
     uint32_t *p_roundIndexToSend
     ) {
+  unsigned tid = TID_1D;
+  unsigned nthreads = TOTAL_THREADS_1D;
+
+  const unsigned __kernel_tb_size = TB_SIZE;
+  bool is_source;
+  index_type src_end;
+  // FP: "1 -> 2;
+  // FP: "2 -> 3;
+  src_end = __end;
+  for (index_type src = __begin + tid; src < src_end; src += nthreads)
+  {
+    bool pop  = src < __end;
+    if (pop)
+    {
+      for (unsigned i = 0; i < numSourcesPerRound; ++i) {
+        is_source = graph.node_data[src] == nodesToConsider[i];
+        auto gridIdx = src * vectorSize + i; 
+        if (!is_source)
+        {
+          p_minDistance[gridIdx]     = infinity;
+          p_shortPathCount[gridIdx] = 0;
+          // fixme: need to set MRBCTree distance for i to 0
+          // p_tree[gridIdx] = 0;
+        }
+        else
+        {
+          p_minDistance[gridIdx]     = 0;
+          p_shortPathCount[gridIdx] = 1;
+        }
+        p_dependency[gridIdx]       = 0;
+      }
+    }
+  }
 }
 
-void InitializeIteration_allNodes_cuda(uint32_t infinity, uint32_t numSourcesPerRound, const std::vector<uint64_t>& nodesToConsider, CUDA_Context* cuda_ctx) {
+void InitializeIteration_allNodes_cuda(uint32_t infinity, uint32_t numSourcesPerRound, uint32_t vectorSize, const std::vector<uint64_t>& nodesToConsider, CUDA_Context* cuda_ctx) {
   dim3 blocks;
   dim3 threads;
   kernel_sizing(blocks, threads);
@@ -88,31 +122,95 @@ void InitializeIteration_allNodes_cuda(uint32_t infinity, uint32_t numSourcesPer
   cudaMalloc((void**)&nodes, size);
   cudaMemcpy(nodes, nodesToConsider.data(), size, cudaMemcpyDeviceToHost);
 
-  InitializeIteration<<<blocks, threads>>>(0, cuda_ctx->gg.nnodes, infinity, numSourcesPerRound, nodes,
+  InitializeIteration<<<blocks, threads>>>(cuda_ctx->gg, 0, cuda_ctx->gg.nnodes, infinity, numSourcesPerRound, vectorSize, nodes,
       cuda_ctx->minDistance.data.gpu_wr_ptr(),
       cuda_ctx->shortPathCount.data.gpu_wr_ptr(),
       cuda_ctx->dependency.data.gpu_wr_ptr(),
       cuda_ctx->roundIndexToSend.data.gpu_wr_ptr()
       );
+
+  cudaDeviceSynchronize();
+  check_cuda_kernel;
 }
 
-void FindMessageToSync_allNodes_cuda(uint32_t &dga, uint32_t roundNumber, CUDA_Context* cuda_ctx) {}
+void FindMessageToSync_allNodes_cuda(uint32_t &dga, uint32_t roundNumber, CUDA_Context* ctx) {
+  dim3 blocks;
+  dim3 threads;
+  kernel_sizing(blocks, threads);
 
-void ConfirmMessageToSend_allNodes_cuda(uint32_t roundNumber, CUDA_Context* cuda_ctx) {}
+  FindMessageToSync<<<blocks, threads>>>(ctx->gg, 0, ctx->gg.nnodes, dga, roundNumber,
+      ctx->roundIndexToSend.data.gpu_wr_ptr(),
+      ctx->minDistance.data.gpu_wr_ptr());
 
-void SendAPSPMessages_nodesWithEdges_cuda(uint32_t &dga, CUDA_Context* cuda_ctx) {}
+  cudaDeviceSynchronize();
+  check_cuda_kernel;
+}
 
-void RoundUpdate_allNodes_cuda(CUDA_Context* cuda_ctx) {} 
+void ConfirmMessageToSend_allNodes_cuda(uint32_t roundNumber, CUDA_Context* cuda_ctx) {
+  dim3 blocks;
+  dim3 threads;
+  kernel_sizing(blocks, threads);
 
-void BackFindMessageToSend_allNodes_cuda(uint32_t roundNumber, uint32_t lastRoundNumber, CUDA_Context* cuda_ctx) {}
+  cudaDeviceSynchronize();
+  check_cuda_kernel;
+}
 
-void BackProp_nodesWithEdges_cuda(uint32_t lastRoundNumber, CUDA_Context* cuda_ctx) {}
+void SendAPSPMessages_nodesWithEdges_cuda(uint32_t &dga, CUDA_Context* cuda_ctx) {
+  dim3 blocks;
+  dim3 threads;
+  kernel_sizing(blocks, threads);
+
+  cudaDeviceSynchronize();
+  check_cuda_kernel;
+}
+
+void RoundUpdate_allNodes_cuda(CUDA_Context* cuda_ctx) {
+  dim3 blocks;
+  dim3 threads;
+  kernel_sizing(blocks, threads);
+
+  cudaDeviceSynchronize();
+  check_cuda_kernel;
+}
+
+
+void BackFindMessageToSend_allNodes_cuda(uint32_t roundNumber, uint32_t lastRoundNumber, CUDA_Context* cuda_ctx) {
+  dim3 blocks;
+  dim3 threads;
+  kernel_sizing(blocks, threads);
+
+  cudaDeviceSynchronize();
+  check_cuda_kernel;
+}
+
+void BackProp_nodesWithEdges_cuda(uint32_t lastRoundNumber, CUDA_Context* cuda_ctx) {
+  dim3 blocks;
+  dim3 threads;
+  kernel_sizing(blocks, threads);
+
+  cudaDeviceSynchronize();
+  check_cuda_kernel;
+}
 
 void BC_masterNodes_cuda(const std::vector<uint64_t>& nodesToConsider, CUDA_Context* cuda_ctx) {
+  dim3 blocks;
+  dim3 threads;
+  kernel_sizing(blocks, threads);
+
   auto size = nodesToConsider.size() * sizeof(uint64_t);
   uint64_t* nodes;
   cudaMalloc((void**)&nodes, size);
   cudaMemcpy(nodes, nodesToConsider.data(), size, cudaMemcpyDeviceToHost);
+
+  cudaDeviceSynchronize();
+  check_cuda_kernel;
 }
 
-void Sanity_masterNodes_cuda(float &dga_max, float &dga_min, float &dga_sum, CUDA_Context* cuda_ctx) {}
+void Sanity_masterNodes_cuda(float &dga_max, float &dga_min, float &dga_sum, CUDA_Context* cuda_ctx) {
+  dim3 blocks;
+  dim3 threads;
+  kernel_sizing(blocks, threads);
+
+  cudaDeviceSynchronize();
+  check_cuda_kernel;
+}

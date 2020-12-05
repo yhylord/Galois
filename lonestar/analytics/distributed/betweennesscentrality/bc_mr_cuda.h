@@ -14,7 +14,7 @@ float get_node_betweenness_centrality_cuda(CUDA_Context* ctx, uint32_t LID);
 
 void InitializeGraph_allNodes_cuda(uint32_t vectorSize, CUDA_Context* cuda_ctx);
 
-void InitializeIteration_allNodes_cuda(uint32_t infinity, uint32_t numSourcesPerRound, const std::vector<uint64_t>& nodesToConsider, CUDA_Context* cuda_ctx);
+void InitializeIteration_allNodes_cuda(uint32_t infinity, uint32_t numSourcesPerRound, uint32_t vectorSize, const std::vector<uint64_t>& nodesToConsider, CUDA_Context* cuda_ctx);
 
 void FindMessageToSync_allNodes_cuda(uint32_t &dga, uint32_t roundNumber, CUDA_Context* cuda_ctx);
 

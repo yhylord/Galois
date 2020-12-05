@@ -2,6 +2,7 @@
 #include "ggcuda.h"
 #include "cub/cub.cuh"
 #include "cub/util_allocator.cuh"
+#include "mrbc_tree_cuda.cuh"
 #include "bc_mr_cuda.cuh"
 
 #include <vector>

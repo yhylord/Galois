@@ -11,6 +11,7 @@ struct CUDA_Context : public CUDA_Context_Common {
   struct CUDA_Context_Field<uint32_t> minDistance;
   struct CUDA_Context_Field<ShortPathType> shortPathCount;
   struct CUDA_Context_Field<float> dependency;
+  // struct CUDA_Context_Field<MRBCTreeCU
   // fixme: need to have a MRBCTree equivalent field
   // MRBCTree dTree;
   struct CUDA_Context_Field<float> bc;

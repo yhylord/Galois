@@ -133,6 +133,10 @@ void InitializeIteration_allNodes_cuda(uint32_t infinity, uint32_t numSourcesPer
   check_cuda_kernel;
 }
 
+__global__ void FindMessageToSync(CSRGraph graph, uint32_t __begin, uint32_t __end, uint32_t &dga, uint32_t roundNumber,
+    uint32_t *p_roundIndexToSend,
+    uint32_t *p_minDistance) {}
+
 void FindMessageToSync_allNodes_cuda(uint32_t &dga, uint32_t roundNumber, CUDA_Context* ctx) {
   dim3 blocks;
   dim3 threads;

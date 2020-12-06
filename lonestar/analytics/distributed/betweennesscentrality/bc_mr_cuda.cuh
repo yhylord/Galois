@@ -5,15 +5,15 @@
 #include "bc_mr_cuda.h"
 #include "galois/runtime/cuda/DeviceSync.h"
 
+#include "mrbc_tree_cuda.cuh"
+
 struct CUDA_Context : public CUDA_Context_Common {
   // BCData
   // NOTE: The following 3 are 2D fields, each with gg.nnodes * vectorSize elements
   struct CUDA_Context_Field<uint32_t> minDistance;
   struct CUDA_Context_Field<ShortPathType> shortPathCount;
   struct CUDA_Context_Field<float> dependency;
-  // struct CUDA_Context_Field<MRBCTreeCU
-  // fixme: need to have a MRBCTree equivalent field
-  // MRBCTree dTree;
+  struct CUDA_Context_Field<MRBCTreeCUDA> dTree;
   struct CUDA_Context_Field<float> bc;
   struct CUDA_Context_Field<uint32_t> roundIndexToSend;
 };

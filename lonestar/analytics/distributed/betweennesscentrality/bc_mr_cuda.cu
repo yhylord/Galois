@@ -71,12 +71,13 @@ void InitializeGraph_allNodes_cuda(uint32_t vectorSize, CUDA_Context* ctx) {
 
 // TODO: Pass in MRBC Tree
 __global__ void InitializeIteration(CSRGraph graph, uint32_t __begin, uint32_t __end,
-    uint32_t infinity, uint32_t numSourcesPerRound, uint32_t vectorSize,
-    uint64_t* nodesToConsider, 
-    uint32_t *p_minDistance,
-    ShortPathType *p_shortPathCount,
-    float *p_dependency,
-    uint32_t *p_roundIndexToSend
+                                    uint32_t infinity, uint32_t numSourcesPerRound, uint32_t vectorSize,
+                                    uint64_t* nodesToConsider,
+                                    uint32_t *p_minDistance,
+                                    ShortPathType *p_shortPathCount,
+                                    float *p_dependency,
+                                    MRBCTreeCUDA *p_dTree,
+                                    uint32_t *p_roundIndexToSend
     ) {
   unsigned tid = TID_1D;
   unsigned nthreads = TOTAL_THREADS_1D;
@@ -100,7 +101,7 @@ __global__ void InitializeIteration(CSRGraph graph, uint32_t __begin, uint32_t _
           p_minDistance[gridIdx]     = infinity;
           p_shortPathCount[gridIdx] = 0;
           // fixme: need to set MRBCTree distance for i to 0
-          // p_tree[gridIdx] = 0;
+          p_dTree[src]->setDistance(i, 0);
         }
         else
         {
